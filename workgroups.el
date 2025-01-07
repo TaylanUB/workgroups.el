@@ -52,7 +52,12 @@
 
 ;;; Code:
 
-(require 'cl)
+(eval-when-compile
+  (require 'cl-macs))
+
+(require 'cl-lib)
+(require 'cl-seq)
+(require 'cl-extra)
 
 
 ;;; consts
@@ -378,7 +383,7 @@ stable, but is left here for the time being.")
   "`defface' wrapper adding a lookup key used by `wg-fontify'."
   (declare (indent 2))
   `(progn
-     (pushnew (cons ,key ',face) wg-face-abbrevs :test #'equal)
+     (cl-pushnew (cons ,key ',face) wg-face-abbrevs :test #'equal)
      (defface ,face ,spec ,doc ,@args)))
 
 (wg-defface wg-current-workgroup-face :cur
@@ -460,7 +465,7 @@ Iterative to prevent stack overflow."
 (defmacro wg-dbind (args expr &rest body)
   "Abbreviation of `destructuring-bind'."
   (declare (indent 2))
-  `(destructuring-bind ,args ,expr ,@body))
+  `(cl-destructuring-bind ,args ,expr ,@body))
 
 (defmacro wg-dohash (spec &rest body)
   "do-style wrapper for `maphash'."
@@ -484,7 +489,7 @@ Iterative to prevent stack overflow."
 Returns the elt itself, rather than the return value of the form."
   (declare (indent 1))
   (wg-dbind (sym list) spec
-    `(some (lambda (,sym) (when (progn ,@body) ,sym)) ,list)))
+    `(cl-some (lambda (,sym) (when (progn ,@body) ,sym)) ,list)))
 
 (defmacro wg-when-let (binds &rest body)
   "Like `let*', but only eval BODY when all BINDS are non-nil."
@@ -555,20 +560,20 @@ HI-INCLUSIVE non-nil means the HI bound is inclusive."
 
 (defun wg-cyclic-offset-elt (elt list n)
   "Cyclically offset ELT's position in LIST by N."
-  (wg-when-let ((pos (position elt list)))
+  (wg-when-let ((pos (cl-position elt list)))
     (wg-move-elt elt list (mod (+ n pos) (length list)))))
 
 (defun wg-cyclic-nth-from-elt (elt list n)
   "Return the elt in LIST N places cyclically from ELT.
 If ELT is not present is LIST, return nil."
-  (wg-when-let ((pos (position elt list)))
+  (wg-when-let ((pos (cl-position elt list)))
     (nth (mod (+ pos n) (length list)) list)))
 
 (defun wg-util-swap (elt1 elt2 list)
   "Return a copy of LIST with ELT1 and ELT2 swapped.
 Return nil when ELT1 and ELT2 aren't both present."
-  (wg-when-let ((p1 (position elt1 list))
-                (p2 (position elt2 list)))
+  (wg-when-let ((p1 (cl-position elt1 list))
+                (p2 (cl-position elt2 list)))
     (wg-move-elt elt1 (wg-move-elt elt2 list p1) p2)))
 
 (defun wg-aget (alist key)
@@ -674,7 +679,7 @@ N defaults to 1, and FRAME defaults to `selected-frame'."
   "Return a copy of STR fontified according to FACEKEY.
 FACEKEY must be a key in `wg-face-abbrevs'."
   (let ((face (wg-aget wg-face-abbrevs facekey))
-        (str  (copy-seq str)))
+        (str  (cl-copy-seq str)))
     (unless face (error "No face with key %s" facekey))
     (if (not wg-use-faces) str
       (put-text-property 0 (length str) 'face face str)
@@ -685,7 +690,7 @@ FACEKEY must be a key in `wg-face-abbrevs'."
   (declare (indent defun))
   `(concat
     ,@(wg-docar (spec specs)
-        (typecase spec
+        (cl-typecase spec
           (cons (if (keywordp (car spec))
                     `(wg-add-face
                       ,(car spec)
@@ -775,7 +780,7 @@ minibuffer is active.")))
 
 (defun wg-w-edge-operation (w edges op)
   "Return a copy of W with its edges mapped against EDGES through OP."
-  (wg-aput w 'edges (mapcar* op (wg-aget w 'edges) edges)))
+  (wg-aput w 'edges (cl-mapcar op (wg-aget w 'edges) edges)))
 
 (defun wg-first-win (w)
   "Return the first actual window in W."
@@ -824,7 +829,7 @@ minibuffer is active.")))
         ((and (wg-wtree-p w1) (wg-wtree-p w2))
          (and (eq (wg-dir w1) (wg-dir w2))
               (equal (wg-edges w1) (wg-edges w2))
-              (every #'wg-equal-wtrees (wg-wlist w1) (wg-wlist w2))))))
+              (cl-every #'wg-equal-wtrees (wg-wlist w1) (wg-wlist w2))))))
 
 ;; FIXME: Require a minimum size to fix wscaling
 (defun wg-normalize-wtree (wtree)
@@ -889,7 +894,7 @@ with `wg-scale-wconfigs-wtree' to fit the frame as it exists."
 (defun wg-reverse-wlist (w &optional dir)
   "Reverse W's wlist and those of all its sub-wtrees in direction DIR.
 If DIR is nil, reverse WTREE horizontally.
-If DIR is 'both, reverse WTREE both horizontally and vertically.
+If DIR is `both', reverse WTREE both horizontally and vertically.
 Otherwise, reverse WTREE vertically."
   (cl-labels ((inner (w) (if (wg-window-p w) w
                            (wg-abind w ((d1 dir) edges wlist)
@@ -1144,7 +1149,7 @@ structures of WT1 and WT2 looking for discrepancies."
      d2 (wg-morph-step-edges wt1 wt2)
      (if (not (eq (wg-dir wt1) (wg-dir wt2)))
          (list (wg-minify-last-win wt2) wt1)
-       (mapcar* #'wg-morph-dispatch
+       (cl-mapcar #'wg-morph-dispatch
                 (wg-morph-match-wlist wt1 wt2)
                 (wg-wlist wt2))))))
 
@@ -1176,7 +1181,7 @@ Assumes both FROM and TO fit in `selected-frame'."
         (watchdog 0))
     (condition-case err
         (wg-until (wg-equal-wtrees from to)
-          (when (> (incf watchdog) wg-morph-max-steps)
+          (when (> (cl-incf watchdog) wg-morph-max-steps)
             (error "`wg-morph-max-steps' exceeded"))
           (setq from (wg-normalize-wtree (wg-morph-dispatch from to)))
           (wg-restore-wtree from)
@@ -1377,7 +1382,7 @@ Also delete all references to it in `wg-frame-table'."
   "Add WORKGROUP to `wg-list'.
 If a workgroup with the same name exists, overwrite it."
   (wg-awhen (wg-get-workgroup 'name (wg-name new) t)
-    (unless pos (setq pos (position it wg-list)))
+    (unless pos (setq pos (cl-position it wg-list)))
     (wg-delete it))
   (wg-set-uid new (wg-new-uid))
   (setq wg-dirty t wg-list (wg-insert-elt new wg-list pos)))
@@ -1441,13 +1446,13 @@ Query to overwrite if a workgroup with the same name exists."
   "Return a copy of the buffer list of WORKGROUP.
 Also removes any dead buffers."
   (let* ((buffers (gethash workgroup wg-buffer-mapping))
-         (buffers (delete-if-not 'buffer-live-p buffers)))
+         (buffers (cl-delete-if-not 'buffer-live-p buffers)))
     (puthash workgroup buffers wg-buffer-mapping)
-    (copy-list buffers)))
+    (cl-copy-list buffers)))
 
 (defun wg-buffer-list ()
   "Call `wg-workgroup-buffer-list' on all workgroups in `wg-list'."
-  (remove-duplicates
+  (cl-remove-duplicates
    (mapcan #'wg-workgroup-buffer-list (wg-list t))
    :test #'eq))
 
@@ -1461,15 +1466,15 @@ Also removes any dead buffers."
   "Sort BUFFERS according to `buffer-list' output."
   (let ((buffer-list (buffer-list)))
     (sort buffers (lambda (b1 b2)
-                    (< (position b1 buffer-list)
-                       (position b2 buffer-list))))))
+                    (< (cl-position b1 buffer-list)
+                       (cl-position b2 buffer-list))))))
 
 (defun wg-workgroup-visible-buffers (workgroup)
   "Return a list of unique buffer names visible in WORKGROUP."
   (let ((wtree (wg-wtree (wg-working-config workgroup))))
     (cl-labels ((rec (w) (if (wg-window-p w) (list (wg-aget w 'buffer))
                            (mapcan #'rec (wg-wlist w)))))
-      (remove-duplicates (rec wtree) :test #'eq))))
+      (cl-remove-duplicates (rec wtree) :test #'eq))))
 
 (defun wg-buffers-for-reading (&optional workgroup)
   "Returns a list of buffers for reading from the user."
@@ -1483,7 +1488,7 @@ Also removes any dead buffers."
   (let* ((wg (or workgroup (wg-current-workgroup)))
          (buffers (wg-buffers-for-reading wg)))
     (let ((visible-buffers (wg-workgroup-visible-buffers wg)))
-      (delete-if (lambda (b) (memq b visible-buffers)) buffers))))
+      (cl-delete-if (lambda (b) (memq b visible-buffers)) buffers))))
 
 (defun wg-buffers-for-killing (&optional workgroup)
   "Returns a list of buffers for killing."
@@ -1495,7 +1500,7 @@ Also removes any dead buffers."
 (defun wg-make-ido-ignore-buffers-regexp (non-ignored-buffers)
   "Return an entry for `ido-ignore-buffers' that matches all but
 NON-IGNORED-BUFFERS."
-  (let* ((ignored-buffers (set-difference (buffer-list) non-ignored-buffers))
+  (let* ((ignored-buffers (cl-set-difference (buffer-list) non-ignored-buffers))
          (ignored-buffer-names (mapcar #'buffer-name ignored-buffers)))
     (rx-to-string `(: bos (or ,@ignored-buffer-names) eos))))
 
@@ -1528,7 +1533,7 @@ current, switch to another from the current workgroup."
   (let ((cur (wg-current-workgroup t)))
     (cond (cur (wg-fontify " "
                  (:div wg-mode-line-left-brace)
-                 (:mode (position cur (wg-list t)))
+                 (:mode (cl-position cur (wg-list t)))
                  (:div wg-mode-line-divider)
                  (:mode (wg-name cur))
                  (:div wg-mode-line-right-brace)))
@@ -1541,7 +1546,7 @@ current, switch to another from the current workgroup."
   "Add Workgroups' mode-line format to `mode-line-format'."
   (unless (assq 'wg-mode-line-on mode-line-format)
     (let ((format `(wg-mode-line-on (:eval (wg-mode-line-string))))
-          (pos (1+ (position 'mode-line-position mode-line-format))))
+          (pos (1+ (cl-position 'mode-line-position mode-line-format))))
       (set-default 'mode-line-format
                    (wg-insert-elt format mode-line-format pos)))))
 
@@ -1637,7 +1642,7 @@ current and previous workgroups."
       (:brace wg-display-left-brace)
       (if (not wl) (wg-fontify (:msg "No workgroups are defined"))
         (wg-doconcat (w wl div)
-          (let ((str (format "%d: %s" (incf i) (wg-name w))))
+          (let ((str (format "%d: %s" (cl-incf i) (wg-name w))))
             (cond ((eq w cur)
                    (wg-fontify (:cur (concat cld str crd))))
                   ((eq w prev)
@@ -1793,7 +1798,7 @@ Worgroups are updated with their working configs in the
      (or (nth n wl) (error "There are only %d workgroups" (length wl))))))
 
 ;; Define wg-switch-to-index-[0-9]:
-(macrolet
+(cl-macrolet
     ((defi (n)
        `(defun ,(intern (format "wg-switch-to-index-%d" n)) ()
           ,(format "Switch to the workgroup at index %d in the list." n)
@@ -1884,7 +1889,7 @@ Deletes saved state in `wg-frame-table' and nulls out `wg-list',
 
 (defun wg-alist-filter (alist fields)
   "Returns ALIST with fields in FIELDS filtered."
-  (remove-if (lambda (key-value)
+  (cl-remove-if (lambda (key-value)
                (memq (car key-value) fields))
              alist))
 
